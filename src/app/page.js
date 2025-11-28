@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ShoppingCart, Package, DollarSign, LogOut, TrendingUp, 
   AlertTriangle, Plus, List, TrendingDown, Calendar, Tag, 
-  BarChart3, Filter, ChevronRight, Store, User, Loader2, Trash2, X, Edit, ArrowRightLeft, ArrowUpCircle, ArrowDownCircle, CheckCircle, Lock, MessageCircle, Menu, Bell, Search, Settings, Save, Percent
+  BarChart3, Filter, ChevronRight, Store, User, Loader2, Trash2, X, Edit, ArrowRightLeft, ArrowUpCircle, ArrowDownCircle, CheckCircle, Lock, MessageCircle, Menu, Bell, Search, Settings, Save, Percent, ScanBarcode
 } from 'lucide-react';
 
-// IMPORTAR AS FUNÇÕES DO FIREBASE
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
@@ -29,9 +28,6 @@ import {
   where 
 } from "firebase/firestore";
 
-// ============================================================================
-// CONFIGURAÇÃO DO FIREBASE
-// ============================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyChgvP8008ti9TkmzYyguPhTBpH-jq-Bzo", 
   authDomain: "mercadopro-70447.firebaseapp.com",
@@ -42,19 +38,15 @@ const firebaseConfig = {
   measurementId: "G-BXYC5K1M0S"
 };
 
-// Inicialização do Firebase
 let app, auth, db;
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
 } catch (e) {
-  console.error("Erro crítico ao iniciar Firebase:", e);
+  console.error(e);
 }
 
-// ============================================================================
-// LISTA DE PRODUTOS COMUNS
-// ============================================================================
 const SUGESTOES_PADRAO = [
   "Arroz Branco Camil 5kg", "Arroz Branco Tio João 5kg", "Feijão Carioca Camil 1kg", "Feijão Preto Kicaldo 1kg",
   "Açúcar Refinado União 1kg", "Sal Refinado Cisne 1kg", "Farinha de Trigo Dona Benta 1kg",
@@ -62,16 +54,16 @@ const SUGESTOES_PADRAO = [
   "Café Pilão 500g", "Café Melitta 500g", "Leite Integral Italac 1L", "Manteiga Aviação 200g", "Margarina Qualy 500g",
   "Refrigerante Coca-Cola 2L", "Refrigerante Guaraná Antarctica 2L", "Cerveja Skol Lata 350ml", "Cerveja Heineken 330ml",
   "Sabão em Pó Omo 800g", "Detergente Ypê 500ml", "Água Sanitária Qboa 1L", "Papel Higiênico Neve 4un",
-  "Creme Dental Colgate 90g", "Sabonete Dove 90g"
+  "Creme Dental Colgate 90g", "Sabonete Dove 90g", "Chocolate Barra Nestlé", "Biscoito Recheado Trakinas",
+  "Maionese Hellmanns 500g", "Ketchup Heinz", "Mostarda Heinz", "Azeite Gallo", "Vinagre de Álcool",
+  "Feijão Preto Combrasil", "Macarrão Instantâneo Nissin", "Molho de Tomate Fugini", "Leite Condensado Moça",
+  "Creme de Leite Nestlé", "Milho Verde Quero", "Ervilha Quero", "Sardinha Coqueiro", "Atum Gomes da Costa"
 ];
 
-// ============================================================================
-// SERVICE LAYER
-// ============================================================================
 const api = {
   auth: {
     login: async (email, senha) => {
-      if (!auth) throw new Error("O Firebase não foi iniciado corretamente.");
+      if (!auth) throw new Error("Erro de conexão.");
       return await signInWithEmailAndPassword(auth, email.trim(), senha);
     },
     onStateChanged: (callback) => {
@@ -82,7 +74,6 @@ const api = {
       if (auth) await signOut(auth);
     }
   },
-  
   config: {
     get: async (userUid) => {
       if (!userUid || !db) return { metaDiaria: 1000, nomeEmpresa: "Minha Loja" };
@@ -98,7 +89,6 @@ const api = {
       await setDoc(doc(db, "users", userUid, "config", "geral"), data, { merge: true });
     }
   },
-
   produtos: {
     listar: async (userUid) => {
       if (!userUid || !db) return [];
@@ -109,10 +99,11 @@ const api = {
       } catch (error) { return []; }
     },
     criar: async (userUid, produto) => {
-      if (!db) throw new Error("Banco de dados não conectado");
+      if (!db) throw new Error("Erro de conexão");
       const { id, ...dadosProduto } = produto; 
       const produtoSeguro = {
         ...dadosProduto,
+        codigoBarras: produto.codigoBarras || "",
         precoCusto: Number(produto.precoCusto) || 0,
         precoVenda: Number(produto.precoVenda) || 0,
         estoque: Number(produto.estoque) || 0,
@@ -130,7 +121,6 @@ const api = {
     },
     ajustarEstoque: async (userUid, id, quantidade) => {} 
   },
-  
   vendas: {
     listar: async (userUid) => {
       if (!userUid || !db) return [];
@@ -155,10 +145,6 @@ const api = {
     }
   }
 };
-
-// ============================================================================
-// UTILITÁRIOS DE DATA CORRIGIDOS
-// ============================================================================
 
 const getLocalDate = () => {
   const now = new Date();
@@ -238,7 +224,7 @@ const AlertModal = ({ isOpen, onClose, title, message, type = 'success' }) => {
         </div>
         <h3 className="text-lg font-bold text-slate-800 mb-2">{title}</h3>
         <p className="text-slate-500 text-sm mb-6 leading-relaxed">{message}</p>
-        <button onClick={onClose} className={`w-full px-4 py-2.5 rounded-xl text-white font-semibold shadow-lg transition-all text-sm ${isSuccess ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-200'}`}>OK, Entendido</button>
+        <button onClick={onClose} className={`w-full px-4 py-2.5 rounded-xl text-white font-semibold shadow-lg transition-all text-sm ${isSuccess ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 'bg-rose-600 hover:bg-rose-700 shadow-rose-200'}`}>OK</button>
       </div>
     </div>
   );
@@ -251,7 +237,7 @@ const StockModal = ({ isOpen, onClose, onSave, produto }) => {
   if (!isOpen || !produto) return null;
   const handleSave = () => {
     const quantidade = parseInt(qtd);
-    if (!quantidade || quantidade <= 0) return alert("Digite uma quantidade válida");
+    if (!quantidade || quantidade <= 0) return;
     const ajuste = tipo === 'entrada' ? quantidade : -quantidade;
     onSave(produto.id, ajuste);
   };
@@ -280,7 +266,6 @@ const StockModal = ({ isOpen, onClose, onSave, produto }) => {
   );
 };
 
-// MODAL DE PROMOÇÃO (AGORA CONECTADO)
 const PromotionModal = ({ isOpen, onClose, onSave, produto }) => {
   const [desconto, setDesconto] = useState('');
   const [novoPreco, setNovoPreco] = useState(0);
@@ -305,11 +290,9 @@ const PromotionModal = ({ isOpen, onClose, onSave, produto }) => {
 
   const handleConfirm = () => {
     if (!desconto && parseFloat(novoPreco) === produto.precoVenda) {
-        // Se não alterou nada, apenas fecha
         onClose();
         return;
     }
-    // Chama a função de salvar passando o ID, o novo preço e a flag de promoção
     onSave(produto.id, novoPreco);
   };
 
@@ -354,7 +337,7 @@ const PromotionModal = ({ isOpen, onClose, onSave, produto }) => {
           </div>
 
           <Button onClick={handleConfirm} className="w-full py-3 text-base bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200">
-            Aplicar Promoção
+            Aplicar
           </Button>
         </div>
       </div>
@@ -394,7 +377,7 @@ const EditSaleModal = ({ isOpen, onClose, onSave, venda }) => {
             <Input label="Total (R$)" type="number" value={total} onChange={e => setTotal(e.target.value)} />
           </div>
           <Input label="Data" type="date" value={data} onChange={e => setData(e.target.value)} />
-          <Button onClick={handleSave} className="w-full mt-4 py-3">Salvar Alterações</Button>
+          <Button onClick={handleSave} className="w-full mt-4 py-3">Salvar</Button>
         </div>
       </div>
     </div>
@@ -434,7 +417,6 @@ const Input = ({ label, className, ...props }) => (
   </div>
 );
 
-// SIDEBAR NAVIGATION
 const Sidebar = ({ setPagina, paginaAtual, onLogout, nomeEmpresa }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Visão Geral', icon: BarChart3 },
@@ -466,7 +448,7 @@ const Sidebar = ({ setPagina, paginaAtual, onLogout, nomeEmpresa }) => {
            ))}
         </div>
         <div className="p-4 border-t border-slate-800">
-          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 transition-all"><LogOut size={18} /> Sair do Sistema</button>
+          <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 transition-all"><LogOut size={18} /> Sair</button>
         </div>
       </aside>
       {isOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setIsOpen(false)}></div>}
@@ -474,7 +456,6 @@ const Sidebar = ({ setPagina, paginaAtual, onLogout, nomeEmpresa }) => {
   );
 };
 
-// NOVA TELA DE LOGIN 
 const PaginaLogin = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
@@ -487,22 +468,13 @@ const PaginaLogin = ({ onLogin }) => {
       onLogin(user);
     } 
     catch (e) { 
-      console.error("Erro Login:", e);
       let msg = "Erro desconhecido.";
       const code = e.code || "";
       const message = e.message || "Sem detalhes";
-
-      if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
-        msg = "Email ou senha incorretos.";
-      } else if (code === 'auth/invalid-email') {
-        msg = "O endereço de email é inválido.";
-      } else if (code === 'auth/api-key-not-valid') {
-        msg = "A chave (API Key) do Firebase está incorreta.";
-      } else if (message.includes("Firebase não iniciado")) {
-        msg = "Erro de configuração: Firebase não iniciado.";
-      } else {
-        msg = `Erro técnico: ${code} - ${message}`;
-      }
+      if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') msg = "Email ou senha incorretos.";
+      else if (code === 'auth/invalid-email') msg = "O endereço de email é inválido.";
+      else if (code === 'auth/api-key-not-valid') msg = "Chave API inválida.";
+      else msg = `Erro técnico: ${code} - ${message}`;
       alert(msg); 
     } 
     finally { setLoading(false); }
@@ -598,20 +570,19 @@ const PaginaLogin = ({ onLogin }) => {
   );
 };
 
-// NOVA PÁGINA DE CONFIGURAÇÕES PROFISSIONAL
 const PaginaConfig = ({ config, onSave }) => {
   const [meta, setMeta] = useState(config?.metaDiaria || 1000);
   const [nome, setNome] = useState(config?.nomeEmpresa || "Minha Loja");
   const [loading, setLoading] = useState(false);
-  const [alertInfo, setAlertInfo] = useState(null); // Para o alerta de sucesso
+  const [alertInfo, setAlertInfo] = useState(null);
 
   const salvar = async () => {
     setLoading(true);
     try {
       await onSave({ metaDiaria: Number(meta), nomeEmpresa: nome });
-      setAlertInfo({ title: 'Sucesso', message: 'Configurações atualizadas com sucesso.', type: 'success' });
+      setAlertInfo({ title: 'Sucesso', message: 'Salvo com sucesso.', type: 'success' });
     } catch (e) {
-      setAlertInfo({ title: 'Erro', message: 'Falha ao salvar configurações.', type: 'error' });
+      setAlertInfo({ title: 'Erro', message: 'Falha ao salvar.', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -620,68 +591,19 @@ const PaginaConfig = ({ config, onSave }) => {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <AlertModal isOpen={!!alertInfo} onClose={() => setAlertInfo(null)} title={alertInfo?.title} message={alertInfo?.message} type={alertInfo?.type} />
-      
-      <div>
-        <h2 className="text-2xl font-bold text-slate-800">Configurações</h2>
-        <p className="text-slate-500">Gerencie os detalhes da sua empresa e preferências.</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-         {/* Menu Lateral de Config */}
-         <div className="space-y-2">
-            <button className="w-full text-left px-4 py-3 rounded-xl bg-blue-50 text-blue-700 font-medium text-sm border border-blue-100">Geral</button>
-            <button className="w-full text-left px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 font-medium text-sm transition-colors">Usuários (Em breve)</button>
-            <button className="w-full text-left px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 font-medium text-sm transition-colors">Integrações (Em breve)</button>
-         </div>
-
-         {/* Conteúdo */}
-         <div className="md:col-span-2 space-y-6">
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-              <h3 className="text-lg font-bold text-slate-800 mb-6 pb-4 border-b border-slate-100">Informações Básicas</h3>
-              <div className="space-y-6">
-                <div className="space-y-1">
-                   <label className="text-sm font-medium text-slate-700">Nome da Empresa</label>
-                   <Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex: Mercado Silva" />
-                   <p className="text-xs text-slate-400 mt-1">Este nome aparecerá no topo do painel e nos relatórios.</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-              <h3 className="text-lg font-bold text-slate-800 mb-6 pb-4 border-b border-slate-100 flex items-center gap-2">
-                 <Target size={20} className="text-indigo-500"/> Metas e Objetivos
-              </h3>
-              <div className="space-y-6">
-                <div className="space-y-1">
-                   <label className="text-sm font-medium text-slate-700">Meta Diária de Vendas (R$)</label>
-                   <div className="relative">
-                      <span className="absolute left-4 top-3.5 text-slate-400 font-bold">R$</span>
-                      <Input type="number" value={meta} onChange={e => setMeta(e.target.value)} className="pl-12" />
-                   </div>
-                   <p className="text-xs text-slate-400 mt-1">Usado para calcular o progresso no painel de vendas.</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex justify-end">
-               <Button onClick={salvar} loading={loading} variant="accent" className="px-8">Salvar Alterações</Button>
-            </div>
-         </div>
+      <div><h2 className="text-2xl font-bold text-slate-800">Configurações</h2></div>
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 space-y-6">
+         <Input label="Nome da Empresa" value={nome} onChange={e => setNome(e.target.value)} />
+         <Input label="Meta Diária (R$)" type="number" value={meta} onChange={e => setMeta(e.target.value)} />
+         <div className="flex justify-end"><Button onClick={salvar} loading={loading} variant="accent" className="px-8">Salvar</Button></div>
       </div>
     </div>
   );
 };
 
-// Ícone extra necessário
-const Target = ({ size, className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-);
-
-// ... (Produtos, Vendas, Relatorios, Caixa, Dashboard - Mantidos iguais ao anterior)
-
 const PaginaProdutos = ({ produtos, carregarDados, userUid }) => {
   const [loading, setLoading] = useState(false);
-  const [novoProduto, setNovoProduto] = useState({ nome: '', precoCusto: '', precoVenda: '', estoque: '', validade: '' });
+  const [novoProduto, setNovoProduto] = useState({ nome: '', codigoBarras: '', precoCusto: '', precoVenda: '', estoque: '', validade: '' });
   const [produtoParaExcluir, setProdutoParaExcluir] = useState(null);
   const [produtoParaAjustar, setProdutoParaAjustar] = useState(null);
   const [sugestoes, setSugestoes] = useState([]);
@@ -703,7 +625,7 @@ const PaginaProdutos = ({ produtos, carregarDados, userUid }) => {
     try {
       await api.produtos.criar(userUid, { ...novoProduto, precoCusto: parseFloat(novoProduto.precoCusto), precoVenda: parseFloat(novoProduto.precoVenda), estoque: parseInt(novoProduto.estoque) });
       await carregarDados();
-      setNovoProduto({ nome: '', precoCusto: '', precoVenda: '', estoque: '', validade: '' });
+      setNovoProduto({ nome: '', codigoBarras: '', precoCusto: '', precoVenda: '', estoque: '', validade: '' });
     } catch (error) { alert(`Erro: ${error.message}`); } finally { setLoading(false); }
   };
 
@@ -725,17 +647,18 @@ const PaginaProdutos = ({ produtos, carregarDados, userUid }) => {
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative z-20">
         <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2"><Plus className="bg-blue-100 text-blue-600 p-1.5 rounded-lg" size={28} /> Adicionar Novo Produto</h2>
         <form onSubmit={adicionarProduto} className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
-          <div className="md:col-span-4 relative">
-             <Input label="Nome do Produto" value={novoProduto.nome} onChange={handleNomeChange} onBlur={() => setTimeout(() => setMostrarSugestoes(false), 200)} required />
+          <div className="md:col-span-3 relative">
+             <Input label="Nome" value={novoProduto.nome} onChange={handleNomeChange} onBlur={() => setTimeout(() => setMostrarSugestoes(false), 200)} required />
              {mostrarSugestoes && sugestoes.length > 0 && (
               <div className="absolute top-full left-0 w-full mt-1 bg-white border rounded-xl shadow-xl z-50">
                 {sugestoes.map((s, i) => <div key={i} onClick={() => { setNovoProduto({...novoProduto, nome: s}); setMostrarSugestoes(false); }} className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm">{s}</div>)}
               </div>
              )}
           </div>
+          <div className="md:col-span-2"><Input label="Código" value={novoProduto.codigoBarras} onChange={e => setNovoProduto({...novoProduto, codigoBarras: e.target.value})} /></div>
           <div className="md:col-span-2"><Input label="Custo" type="number" step="0.01" value={novoProduto.precoCusto} onChange={e => setNovoProduto({...novoProduto, precoCusto: e.target.value})} required /></div>
           <div className="md:col-span-2"><Input label="Venda" type="number" step="0.01" value={novoProduto.precoVenda} onChange={e => setNovoProduto({...novoProduto, precoVenda: e.target.value})} required /></div>
-          <div className="md:col-span-2"><Input label="Estoque" type="number" value={novoProduto.estoque} onChange={e => setNovoProduto({...novoProduto, estoque: e.target.value})} required /></div>
+          <div className="md:col-span-1"><Input label="Estoque" type="number" value={novoProduto.estoque} onChange={e => setNovoProduto({...novoProduto, estoque: e.target.value})} required /></div>
           <div className="md:col-span-2"><Input label="Validade" type="date" value={novoProduto.validade} onChange={e => setNovoProduto({...novoProduto, validade: e.target.value})} required /></div>
           <div className="md:col-span-12 flex justify-end"><Button type="submit" variant="accent" loading={loading}>Salvar</Button></div>
         </form>
@@ -743,12 +666,13 @@ const PaginaProdutos = ({ produtos, carregarDados, userUid }) => {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50/50 border-b border-slate-200 text-slate-500">
-            <tr><th className="px-6 py-4 text-left">Produto</th><th className="px-6 py-4 text-right">Venda</th><th className="px-6 py-4 text-center">Validade</th><th className="px-6 py-4 text-center">Estoque</th><th className="px-6 py-4 text-center">Ações</th></tr>
+            <tr><th className="px-6 py-4 text-left">Produto</th><th className="px-6 py-4 text-left">Código</th><th className="px-6 py-4 text-right">Venda</th><th className="px-6 py-4 text-center">Validade</th><th className="px-6 py-4 text-center">Estoque</th><th className="px-6 py-4 text-center">Ações</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {produtos.map(p => (
               <tr key={p.id} className="hover:bg-blue-50/50">
                 <td className="px-6 py-4 font-bold text-slate-700">{p.nome}</td>
+                <td className="px-6 py-4 text-slate-500">{p.codigoBarras || '-'}</td>
                 <td className="px-6 py-4 text-right text-slate-700">R$ {p.precoVenda.toFixed(2)}</td>
                 <td className="px-6 py-4 text-center text-slate-500 text-xs font-semibold">{formatDate(p.validade)}</td>
                 <td className="px-6 py-4 text-center"><span className={`px-2 py-1 rounded-md font-bold text-xs ${p.estoque < 10 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>{p.estoque} un</span></td>
@@ -769,17 +693,26 @@ const PaginaVendas = ({ produtos, carregarDados, userUid, config }) => {
   const [loading, setLoading] = useState(false);
   const [produtoId, setProdutoId] = useState('');
   const [qtd, setQtd] = useState(1);
-  const [dataVenda, setDataVenda] = useState(new Date().toISOString().split('T')[0]);
+  const [dataVenda, setDataVenda] = useState(getLocalDate());
   const [alertInfo, setAlertInfo] = useState(null); 
-
-  // Calcula vendas de hoje (Filtrando as vendas reais para somar no progresso)
-  // Nota: Em app real, isso viria do estado 'vendas' filtrado por data.
-  // Aqui, para a barra encher, precisamos das vendas carregadas. Vamos assumir que 'vendas' está disponível no componente pai
-  // e que passamos como prop (veja App component). 
-  // Como este componente não recebe 'vendas', vamos simplificar e mostrar o subtotal atual no card.
+  const [codigoBusca, setCodigoBusca] = useState('');
+  const barcodeInputRef = useRef(null);
 
   const produto = produtos.find(p => p.id === produtoId);
   const subtotal = produto ? (produto.precoVenda * qtd) : 0;
+
+  const handleBarcodeSearch = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const prodEncontrado = produtos.find(p => p.codigoBarras === codigoBusca);
+      if (prodEncontrado) {
+        setProdutoId(prodEncontrado.id);
+        setCodigoBusca(''); 
+      } else {
+        setAlertInfo({ title: 'Não encontrado', message: 'Produto não encontrado.', type: 'error' });
+      }
+    }
+  };
 
   const registrar = async (e) => {
     e.preventDefault();
@@ -792,6 +725,7 @@ const PaginaVendas = ({ produtos, carregarDados, userUid, config }) => {
       await carregarDados();
       setQtd(1); setProdutoId('');
       setAlertInfo({ title: 'Sucesso', message: 'Venda registrada.', type: 'success' });
+      if(barcodeInputRef.current) barcodeInputRef.current.focus();
     } catch (err) { setAlertInfo({ title: 'Erro', message: 'Falha ao registrar.', type: 'error' }); } finally { setLoading(false); }
   };
   
@@ -804,46 +738,37 @@ const PaginaVendas = ({ produtos, carregarDados, userUid, config }) => {
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 h-full flex flex-col">
           <h2 className="text-xl font-bold text-slate-800 mb-8 pb-4 border-b border-slate-100">Registrar Venda</h2>
+          
+          <div className="mb-6 relative">
+             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-blue-500"><ScanBarcode size={20} /></div>
+             <input ref={barcodeInputRef} value={codigoBusca} onChange={e => setCodigoBusca(e.target.value)} onKeyDown={handleBarcodeSearch} placeholder="Escanear Código (Enter)" className="w-full pl-10 pr-4 py-3 bg-blue-50 border-2 border-blue-100 rounded-xl outline-none focus:border-blue-500 font-medium" autoFocus />
+          </div>
+
           <form onSubmit={registrar} className="space-y-6 flex-1">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Selecione o Produto</label>
+              <label className="text-xs font-bold text-slate-500 uppercase">Produto</label>
               <select className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl text-lg outline-none" value={produtoId} onChange={e => setProdutoId(e.target.value)} required>
-                <option value="">Clique para selecionar...</option>
-                {produtos.map(p => (<option key={p.id} value={p.id} disabled={p.estoque === 0}>{p.nome} • R$ {p.precoVenda.toFixed(2)}</option>))}
+                <option value="">Selecione...</option>
+                {produtos.map(p => (<option key={p.id} value={p.id} disabled={p.estoque === 0}>{p.nome} • R$ {p.precoVenda.toFixed(2)} {p.estoque===0 && '(Esgotado)'}</option>))}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-6">
-               <Input label="Data da Venda" type="date" value={dataVenda} onChange={e => setDataVenda(e.target.value)} required />
+               <div className="hidden"><Input label="Data" type="date" value={dataVenda} onChange={e => setDataVenda(e.target.value)} required /></div>
                <Input label="Qtd" type="number" min="1" value={qtd} onChange={e => setQtd(e.target.value)} required />
+               <div className="flex flex-col justify-center"><span className="text-xs font-bold text-slate-400 uppercase mb-1">Data</span><div className="text-slate-700 font-medium flex items-center gap-2"><Calendar size={16}/> {new Date().toLocaleDateString()}</div></div>
             </div>
-            <div className="bg-slate-900 p-6 rounded-xl flex justify-between items-center text-white mt-auto shadow-xl shadow-slate-900/10">
-               <div>
-                  <span className="text-slate-400 text-xs uppercase tracking-widest">Total a Receber</span>
-                  <div className="text-3xl font-bold text-emerald-400">R$ {subtotal.toFixed(2)}</div>
-               </div>
+            <div className="bg-slate-900 p-6 rounded-xl flex justify-between items-center text-white mt-auto shadow-xl">
+               <div><span className="text-slate-400 text-xs uppercase">Total</span><div className="text-3xl font-bold text-emerald-400">R$ {subtotal.toFixed(2)}</div></div>
                <Button type="submit" variant="accent" disabled={!produto} loading={loading} className="px-8 py-4 text-base">Finalizar</Button>
             </div>
           </form>
         </div>
       </div>
       <div className="space-y-6">
-         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-2xl text-white shadow-xl shadow-blue-900/20">
-           <div className="flex justify-between items-end mb-2">
-              <p className="text-blue-200 text-xs font-bold uppercase tracking-widest">Meta Diária</p>
-              <p className="text-xs font-medium bg-white/20 px-2 py-0.5 rounded">Alvo: R$ {meta}</p>
-           </div>
+         <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-2xl text-white shadow-xl">
+           <div className="flex justify-between items-end mb-2"><p className="text-blue-200 text-xs font-bold uppercase">Meta Diária</p><p className="text-xs font-medium bg-white/20 px-2 py-0.5 rounded">Alvo: R$ {meta}</p></div>
            <div className="text-4xl font-bold mb-2">R$ {subtotal.toFixed(2)}</div> 
-           <p className="text-xs text-blue-200 opacity-80 mb-4">Valor desta venda (simulação)</p>
-           <div className="w-full bg-blue-900/30 h-2 rounded-full overflow-hidden">
-              <div className="bg-emerald-400 h-full transition-all duration-500" style={{ width: `${progresso}%` }}></div>
-           </div>
-        </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-fit">
-           <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><ShoppingCart size={18} className="text-slate-400"/> Dicas de Venda</h3>
-           <div className="space-y-4 text-sm text-slate-500">
-             <p>• Ofereça produtos próximos ao vencimento com desconto.</p>
-             <p>• Lembre-se de conferir o estoque antes de finalizar grandes volumes.</p>
-           </div>
+           <div className="w-full bg-blue-900/30 h-2 rounded-full overflow-hidden"><div className="bg-emerald-400 h-full transition-all duration-500" style={{ width: `${progresso}%` }}></div></div>
         </div>
       </div>
     </div>
@@ -855,32 +780,13 @@ const PaginaRelatorios = ({ vendas }) => {
   const [dataFim, setDataFim] = useState('');
   const [filtro, setFiltro] = useState('7dias');
 
-  // Helper para formatar YYYY-MM-DD usando hora local
-  const formatDateInput = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
   const aplicarFiltroRapido = (tipo) => {
     setFiltro(tipo);
-    const hoje = new Date(); 
-    const inicio = new Date();
-
-    if (tipo === 'todos') {
-       setDataInicio('');
-       setDataFim('');
-       return;
-    }
-
-    if (tipo === 'hoje') {
-       // inicio é hoje mesmo
-    } else if (tipo === '7dias') {
-      inicio.setDate(hoje.getDate() - 7);
-    } else if (tipo === '30dias') {
-      inicio.setDate(hoje.getDate() - 30);
-    }
+    const hoje = new Date(); const inicio = new Date();
+    if (tipo === 'todos') { setDataInicio(''); setDataFim(''); return; }
+    if (tipo === 'hoje') {} 
+    else if (tipo === '7dias') inicio.setDate(hoje.getDate() - 7);
+    else if (tipo === '30dias') inicio.setDate(hoje.getDate() - 30);
     
     if (tipo !== 'personalizado') {
       setDataInicio(formatDateInput(inicio)); 
@@ -890,21 +796,9 @@ const PaginaRelatorios = ({ vendas }) => {
 
   const dadosFiltrados = useMemo(() => {
     if (filtro === 'todos' || (!dataInicio && !dataFim)) return vendas;
-    if ((filtro === 'personalizado' && (!dataInicio || !dataFim))) return vendas;
-    
-    const [ia, im, id] = dataInicio.split('-').map(Number);
-    const inicio = new Date(ia, im - 1, id);
-    inicio.setHours(0,0,0,0);
-
-    const [fa, fm, fd] = dataFim.split('-').map(Number);
-    const fim = new Date(fa, fm - 1, fd);
-    fim.setHours(23,59,59,999);
-    
-    return vendas.filter(v => { 
-      const d = parseDate(v.data); 
-      if (isNaN(d.getTime())) return false;
-      return d >= inicio && d <= fim; 
-    });
+    const [ia, im, id] = dataInicio.split('-').map(Number); const inicio = new Date(ia, im - 1, id); inicio.setHours(0,0,0,0);
+    const [fa, fm, fd] = dataFim.split('-').map(Number); const fim = new Date(fa, fm - 1, fd); fim.setHours(23,59,59,999);
+    return vendas.filter(v => { const d = parseDate(v.data); if (isNaN(d.getTime())) return false; return d >= inicio && d <= fim; });
   }, [vendas, dataInicio, dataFim, filtro]);
 
   const totais = dadosFiltrados.reduce((acc, v) => ({ faturamento: acc.faturamento + v.total, qtd: acc.qtd + v.qtd }), { faturamento: 0, qtd: 0 });
@@ -914,21 +808,16 @@ const PaginaRelatorios = ({ vendas }) => {
        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
         <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><List className="text-blue-500"/> Relatório de Desempenho</h2>
         <div className="flex flex-wrap items-center gap-2">
-           <button onClick={() => aplicarFiltroRapido('todos')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${filtro === 'todos' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              Todos
-           </button>
+           <button onClick={() => aplicarFiltroRapido('todos')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${filtro === 'todos' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Todos</button>
            {['hoje', '7dias', '30dias'].map(f => (
-              <button key={f} onClick={() => aplicarFiltroRapido(f)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${filtro === f ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                {f === 'hoje' ? 'Hoje' : f === '7dias' ? '7 Dias' : '30 Dias'}
-              </button>
+              <button key={f} onClick={() => aplicarFiltroRapido(f)} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${filtro === f ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{f === 'hoje' ? 'Hoje' : f === '7dias' ? '7 Dias' : '30 Dias'}</button>
            ))}
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card title="Faturamento do Período" value={`R$ ${totais.faturamento.toFixed(2)}`} icon={DollarSign} trend="up" />
-        <Card title="Volume de Vendas" value={`${totais.qtd} itens`} icon={Package} trend="down" />
+        <Card title="Faturamento" value={`R$ ${totais.faturamento.toFixed(2)}`} icon={DollarSign} trend="up" />
+        <Card title="Vendas" value={`${totais.qtd} itens`} icon={Package} trend="down" />
       </div>
-      {/* TABELA DETALHADA RESTAURADA */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-6 border-b border-slate-100"><h3 className="font-bold text-slate-800">Extrato Detalhado</h3></div>
         <table className="min-w-full text-sm">
@@ -937,7 +826,6 @@ const PaginaRelatorios = ({ vendas }) => {
              {dadosFiltrados.map(v => (
                <tr key={v.id} className="hover:bg-blue-50/50"><td className="px-6 py-4 text-slate-500">{v.data}</td><td className="px-6 py-4 font-bold text-slate-700">{v.produto} ({v.qtd}x)</td><td className="px-6 py-4 text-right text-emerald-600 font-bold">R$ {v.total.toFixed(2)}</td></tr>
              ))}
-             {dadosFiltrados.length === 0 && <tr><td colSpan="3" className="p-8 text-center text-slate-400">Nenhuma venda encontrada neste período.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -949,15 +837,9 @@ const PaginaDashboard = ({ produtos, vendas, onUpdateProduto }) => {
    const [produtoParaPromocao, setProdutoParaPromocao] = useState(null);
 
    const handleSavePromotion = async (id, novoPreco) => {
-       // Encontra o produto para obter o preço original se não existir
        const prod = produtos.find(p => p.id === id);
        const precoOriginal = prod.precoOriginal || prod.precoVenda;
-       
-       await onUpdateProduto(id, { 
-           precoVenda: novoPreco, 
-           emPromocao: true,
-           precoOriginal: precoOriginal
-       });
+       await onUpdateProduto(id, { precoVenda: novoPreco, emPromocao: true, precoOriginal: precoOriginal });
        setProdutoParaPromocao(null);
    };
 
@@ -965,10 +847,8 @@ const PaginaDashboard = ({ produtos, vendas, onUpdateProduto }) => {
      const hoje = new Date();
      hoje.setHours(0,0,0,0);
      const sugestoes = produtos.map(p => {
-       // Correção na criação da data de validade para evitar problemas de fuso
        const parts = p.validade.split('-');
        const dataValidade = new Date(parts[0], parts[1]-1, parts[2]);
-       
        const diffTime = dataValidade - hoje;
        const diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
        let status = 'ok';
@@ -981,28 +861,16 @@ const PaginaDashboard = ({ produtos, vendas, onUpdateProduto }) => {
 
    return (
      <div className="space-y-8">
-       <PromotionModal 
-          isOpen={!!produtoParaPromocao}
-          onClose={() => setProdutoParaPromocao(null)}
-          produto={produtoParaPromocao}
-          onSave={handleSavePromotion}
-       />
-
+       <PromotionModal isOpen={!!produtoParaPromocao} onClose={() => setProdutoParaPromocao(null)} produto={produtoParaPromocao} onSave={handleSavePromotion} />
        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
          <Card title="Faturamento Total" value={`R$ ${analytics.totalFat.toFixed(2)}`} icon={DollarSign} trend="up" />
          <Card title="Produtos Ativos" value={produtos.length} icon={Package} trend="up" />
-         <Card title="Alertas de Validade" value={analytics.sugestoes.length} icon={AlertTriangle} trend={analytics.sugestoes.length > 0 ? 'down' : 'up'} />
+         <Card title="Alertas" value={analytics.sugestoes.length} icon={AlertTriangle} trend="down" />
        </div>
-
        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Tag size={18} className="text-amber-500"/> Atenção: Produtos a Vencer</h3>
-          </div>
+          <div className="p-6 border-b border-slate-100"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Tag size={18} className="text-amber-500"/> Atenção: Produtos a Vencer</h3></div>
           {analytics.sugestoes.length === 0 ? (
-             <div className="text-center py-12 text-slate-400">
-               <CheckCircle size={48} className="mx-auto mb-3 text-emerald-200"/>
-               Tudo certo! Nenhum produto em risco.
-             </div>
+             <div className="text-center py-12 text-slate-400"><CheckCircle size={48} className="mx-auto mb-3 text-emerald-200"/>Tudo certo!</div>
           ) : (
             <div className="divide-y divide-slate-100">
               {analytics.sugestoes.map(p => (
@@ -1015,8 +883,6 @@ const PaginaDashboard = ({ produtos, vendas, onUpdateProduto }) => {
                           <span className={`text-xs font-bold px-2 py-0.5 rounded w-fit ${p.status === 'vencido' ? 'text-rose-600 bg-rose-100' : 'text-amber-600 bg-amber-100'}`}>
                             {p.status === 'vencido' ? `Venceu há ${Math.abs(p.diasRestantes)} dias` : p.status === 'hoje' ? 'VENCE HOJE!' : `Vence em ${p.diasRestantes} dias`}
                           </span>
-                          
-                          {/* Price Display Logic */}
                           {p.emPromocao && (
                               <div className="text-xs flex items-center gap-2 mt-1">
                                   <span className="text-slate-400 line-through">R$ {(p.precoOriginal || p.precoVenda).toFixed(2)}</span>
@@ -1027,25 +893,13 @@ const PaginaDashboard = ({ produtos, vendas, onUpdateProduto }) => {
                       </div>
                     </div>
                   </div>
-                  {/* Lógica Visual de Confirmação */}
                   {p.emPromocao ? (
                       <div className="flex flex-col items-end gap-1">
                         <Badge type="success">Promoção Ativa</Badge>
-                        <button 
-                          onClick={() => setProdutoParaPromocao(p)}
-                          className="text-xs text-slate-400 hover:text-indigo-600 flex items-center gap-1 transition-colors"
-                        >
-                          <Edit size={12} /> Editar
-                        </button>
+                        <button onClick={() => setProdutoParaPromocao(p)} className="text-xs text-slate-400 hover:text-indigo-600 flex items-center gap-1"><Edit size={12} /> Editar</button>
                       </div>
                   ) : (
-                      <Button 
-                        variant="secondary" 
-                        className="text-xs py-1.5 px-3"
-                        onClick={() => setProdutoParaPromocao(p)}
-                      >
-                        Criar Promoção
-                      </Button>
+                      <Button variant="secondary" className="text-xs py-1.5 px-3" onClick={() => setProdutoParaPromocao(p)}>Criar Promoção</Button>
                   )}
                 </div>
               ))}
@@ -1115,7 +969,6 @@ const PaginaCaixa = ({ vendas, carregarDados, userUid, produtos }) => {
                 </td>
               </tr>
             ))}
-            {vendas.length === 0 && <tr><td colSpan="4" className="p-8 text-center text-slate-400">Nenhuma venda registrada.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -1143,20 +996,17 @@ export default function App() {
     setConfig(c);
   };
   
-  // Nova função para atualizar produto (usada pela promoção)
   const atualizarProduto = async (id, novosDados) => {
     if (!userUid) return;
     await api.produtos.update(userUid, id, novosDados);
-    await carregarDados(userUid); // Recarrega para refletir a mudança
+    await carregarDados(userUid);
   };
 
   useEffect(() => {
     const unsubscribe = api.auth.onStateChanged((user) => {
       if (user) {
         setUserUid(user.uid);
-        // Carregamos o nome da empresa do banco, se existir
         api.config.get(user.uid).then(cfg => setConfig(cfg));
-        
         setUsuarioLogado(true);
         setLoadingInicial(true);
         carregarDados(user.uid).finally(() => setLoadingInicial(false));
@@ -1181,7 +1031,6 @@ export default function App() {
       <Sidebar setPagina={setPaginaAtual} paginaAtual={paginaAtual} onLogout={() => { api.auth.logout(); setUsuarioLogado(false); }} />
       <main className="flex-1 h-screen overflow-y-auto p-4 md:p-8 animate-fade-in-up">
         <div className="max-w-7xl mx-auto">
-          {/* Passamos 'config' e a função de salvar para as páginas */}
           <div className="mb-6 flex justify-between items-end">
              <div>
                <h1 className="text-2xl font-bold text-slate-800">{config.nomeEmpresa}</h1>
@@ -1199,7 +1048,6 @@ export default function App() {
           {paginaAtual === 'relatorios' && <PaginaRelatorios vendas={vendas} />}
           {paginaAtual === 'caixa' && <PaginaCaixa vendas={vendas} carregarDados={() => carregarDados(userUid)} userUid={userUid} produtos={produtos} />}
           
-          {/* Nova Página de Configuração */}
           {paginaAtual === 'configuracoes' && (
             <PaginaConfig 
               config={config} 
